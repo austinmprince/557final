@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- inspired by solution to Studio 5 posted Prof. Ottley. DOA: 4/4/18 -->
+    <head>
+        <meta charset="utf-8">
+        <title>Stacked Bar Chart</title>
+        <script src="https://d3js.org/d3.v4.js"></script>
+        <style>
+            h1, h2 {
+                text-align: center;
+                font-family: sans-serif;
+            }
+
+            #canvas svg {
+                display: block;
+                margin: 0 auto;
+            }
+
+            #canvas form {
+                margin: 0 auto;
+                border: 1px lightgray solid;
+                border-radius: 10px;
+                max-width: 200px;
+            }
+
+            #canvas form p {
+                text-align: center;
+                font-size: 1.2em;
+                font-family: sans-serif;
+            }
+
+            #canvas form {
+                font-size: 0.8em;
+                font-family: sans-serif;
+            }
+
+            .tooltip {
+                pointer-events: none; 
+                width: 180px;                    
+                height: 100px;  
+                padding: 3px;   
+                position: absolute;
+                font: 0.75em sans-serif; 
+                color: gray;  
+                border-radius: 8px;                     
+            }
+
+        </style>
+    </head>
+    <body>
+        <h1>Stacked Bar Chart</h1>
+        <section>
+            <h2>Total number of song mentions per candidate over time</h2>
+        </section>
+        <section>
+            <section id="canvas">
+                <form>
+                  <p>Sentiment Filter</p>
+                  <input type="radio" name="sentiment" value="all" checked> All<br>
+                  <input type="radio" name="sentiment" value="positive"> Positive<br>
+                  <input type="radio" name="sentiment" value="negative"> Negative<br>
+                  <input type="radio" name="sentiment" value="neutral"> Neutral  
+                </form>
+            </section>
+        </section>
+        <script type="text/javascript">
+            var dataFolder = "../data/";
+            var fileName = "genius_hip_hop_lyrics.csv";
+            /**
+            Column              Definition
+            -------------------------------------------------
+            candidate           candidate referenced
+            song                song name
+            artist              artist name
+            sentiment           positive, negative or neutral
+            theme               theme of lyric
+            album_release_date  date of album release
+            line                lyrics
+            url                 genius link 
+            **/
+
+
+            var margin = {top: 25, right: 105, bottom: 35, left: 45  },
+                fullWidth = 900,
+                fullHeight = 500,
+                width = fullWidth - margin.left - margin.right,
+                height = fullHeight - margin.top - margin.bottom;
+
+            var parseYear = d3.timeParse("%Y");
+
+            var xScale = d3.scaleTime()
+                .range([margin.left, width]);
+
+            var yScale = d3.scaleLinear()
+                .range([height, margin.top]);
+
+            var zScale = d3.scaleOrdinal()
+                .range(["#8dd3c7", "#ffffb3", "#bebada", "#fb8072", "#80b1d3", "#fdb462", "#b3de69", "#fccde5"]);
+
+            var tooltip = d3.select("body")
+                .append("div")
+                .style("background", "#D3D3D3")
+                .style("opacity", 0)
+                .attr("class", "tooltip");
+
+            var canvas = d3.select("body #canvas")
+                .append("svg")
+                .attr("width", fullWidth)
+                .attr("height", fullHeight);
+
+            // sentiment filtering
+            var currentFilter = "all";
+
+            createBarChart();
+
+            function createBarChart() {
+                // reset canvas
+                canvas.html("");
+
+                // add sentiment filter listeners
+                var form = d3.select("body #canvas form");
+                form.selectAll("input[name='sentiment']").on("change", function(){
+                    currentFilter = this.value;
+                    createBarChart();
+                });
+
+                d3.csv(dataFolder + fileName, function(dataset) {
+                    // get x range
+                    var startYear = d3.min(dataset, function(d) {
+                        return d.album_release_date; 
+                    });
+                    var endYear = d3.max(dataset, function(d) { 
+                        return d.album_release_date;  
+                    });
+
+                    var n = endYear - startYear + 1;
+
+                    // get number of song mentions per candidate per year
+                    var uniqueCandidateNames = d3.map(dataset, function(d) {
+                        return d.candidate;
+                    }).keys();
+                    var songMentionData = getSongMentionData(dataset, startYear, endYear, uniqueCandidateNames);
+
+                    // set domains
+                    setDomains(songMentionData, startYear, endYear, uniqueCandidateNames);
+
+                    // create stacked bars
+                    var stackedData = createStackedData(uniqueCandidateNames, songMentionData);
+
+                    var barPadding = 10;
+                    var bandWidth = width / n - barPadding;
+                    createBars(stackedData, bandWidth, uniqueCandidateNames);
+               
+                    // create axes
+                    createAxes(bandWidth);
+
+                    // create legend: a square colored by the candidate color and name label
+                    createLegend(uniqueCandidateNames);
+
+                    // add hovering listeners
+                    addHovering();
+                });
+            }
+
+            function getSongMentionData(dataset, startYear, endYear, uniqueCandidateNames) {
+                // first create the dictionary
+                var songMentionData = {};
+                for (var yr = startYear; yr <= endYear; yr++) {
+                    for (i in uniqueCandidateNames) {       
+                        var name = uniqueCandidateNames[i];
+                        if (i == 0) {
+                            songMentionData[yr] = []
+                        }
+
+                        songMentionData[yr].push({
+                            candidateName: name, 
+                            totalMentions:0
+                        });
+                    }          
+                }
+                
+                // now get the number of song mentions per candidate per year
+                dataset.forEach(function(d, i) {
+                    var releaseYear = d.album_release_date;
+                    var candidateName = d.candidate;
+                    var yearlySongData = songMentionData[releaseYear];
+                    var sentiment = d.sentiment;
+                    songMentionData[releaseYear].forEach(function(datum, j) {
+                        if (datum.candidateName == candidateName) {
+                            if (currentFilter == "all" || sentiment == currentFilter) {
+                                var prevMentions = yearlySongData[j].totalMentions;
+                                yearlySongData[j].totalMentions = prevMentions + 1;
+                            }
+                        }
+                    });
+                });
+
+                return songMentionData;
+            }
+
+            function getMaxSongMentions(songMentionData) {
+                var maxNumMentions = 0;
+                for (year in songMentionData) {
+                    var yearlySongData = songMentionData[year];
+                    var totalMentionsinYear = d3.sum(yearlySongData, function(d) {
+                        return d.totalMentions;
+                    });
+                    var maxNumMentions = Math.max(maxNumMentions, totalMentionsinYear);
+                    
+                }
+                return maxNumMentions;
+            }
+
+            function setDomains(songMentionData, startYear, endYear, uniqueCandidateNames) {
+                var maxNumMentions = getMaxSongMentions(songMentionData);
+                xScale.domain([parseYear(startYear), parseYear(endYear)]);
+                yScale.domain([0, maxNumMentions]);
+                zScale.domain(uniqueCandidateNames);
+            }
+
+            function createAxes(bandWidth) {
+                var xAxis = d3.axisBottom(xScale)
+                    .ticks(d3.timeYear.every(4));
+                var yAxis = d3.axisLeft(yScale)
+                    .ticks(10);
+                var xPadding = 0;
+                var yPadding = margin.left  - 2;
+                canvas.append("g")
+                    .attr("class", "axis")
+                    .attr("transform", "translate("+bandWidth/2+"," + (height - xPadding) + ")")
+                    .call(xAxis);
+
+                canvas.append("text")
+                    .attr("class", "axis-text")           
+                    .attr("x", width/2)
+                    .attr("y", height +  margin.top + margin.bottom - 10)
+                    .attr("text-anchor", "middle")
+                    .attr("font-family", "sans-serif")
+                    .text("Year");
+
+                canvas.append("g")
+                    .attr("class", "axis")
+                    .attr("transform", "translate(" + yPadding + ", 0)")
+                    .call(yAxis);
+
+                canvas.append("text")
+                    .attr("class", "axis-text")             
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", yPadding - 30)
+                    .attr("x", -height / 2)
+                    .attr("text-anchor", "middle")
+                    .attr("font-family", "sans-serif")
+                    .text("Number of song mentions");
+            }
+
+            function createStackedData(uniqueCandidateNames, songMentionData) {
+                // create stacked bars
+                var songMentionArr = [];
+                for (yr in songMentionData) {
+                    var yearlySongData = songMentionData[yr];
+                    var data = {year: yr};
+                    for (i in yearlySongData) {       
+                        var candidate = yearlySongData[i];
+                        data[candidate.candidateName] = candidate.totalMentions;
+                    }
+                    songMentionArr.push(data);
+                }
+                return d3.stack().keys(uniqueCandidateNames)(songMentionArr);
+            }
+
+            function createBars(stackedData, bandWidth, uniqueCandidateNames) {
+                // add color groups
+                var colorGroup = canvas.append("g")
+                    .selectAll("g")
+                    .data(stackedData)
+                    .enter()
+                    .append("g")
+                    .attr("fill", function(d) { 
+                        return zScale(d.key); 
+                    });
+                
+                // add bars
+                colorGroup.selectAll("rect")
+                    .data(function(d) {
+                        var key = d.key;
+                        d.forEach(function (datum) {
+                            datum.key = key;
+                        })
+                        return d;
+                    })
+                    .enter()
+                    .append("rect")
+                    .attr("class", "bar")
+                    .attr("width", bandWidth)
+                    .attr("height", function(d) {
+                        var candidateMentions = d[0];
+                        var totalMentions = d[1];
+                        return yScale(candidateMentions) - yScale(totalMentions); 
+                    })
+                    .attr("x", function(d) {
+                        var year = parseYear(d.data.year);
+                        return xScale(year); 
+                    })
+                    .attr("y", function(d) {
+                        var totalMentions = d[1];
+                        return yScale(totalMentions);
+                    });
+            }
+
+            function createLegend(uniqueCandidateNames) {
+                var legendRectSize = 18;
+                var legendRectSpacing = 2;
+                var displayDescending = true;
+                var legendData = displayDescending ? uniqueCandidateNames.reverse() : uniqueCandidateNames;
+                var legend = canvas.append("g")
+                    .selectAll("g")
+                    .data(legendData)
+                    .enter()
+                    .append("g")
+                    .attr("transform", function(d, i) { 
+                        return "translate(0," + (legendRectSize + legendRectSpacing) * i + ")"; 
+                    });
+
+                var xPos = width + margin.right/2 - legendRectSize;
+                legend.append("rect")
+                    .attr("fill", zScale)
+                    .attr("x", xPos)
+                    .attr("width", legendRectSize)
+                    .attr("height", legendRectSize);
+
+                legend.append("text")
+                    .attr("dy", "0.29em")
+                    .attr("font-size", "0.8em")
+                    .attr("font-family", "sans-serif")
+                    .attr("x", xPos + legendRectSize + legendRectSpacing)
+                    .attr("y", 10)
+                    .text(function(d) { 
+                        return d; 
+                    });
+            }
+
+            function addHovering() {
+                canvas.selectAll(".bar")
+                    // <!-- inspired by solution to Studio 6 posted Hao Sun. DOA: 3/27/18
+                    .on("mouseover", function(d, i) {
+                        d3.select(this).attr("fill", "black");
+                        var year = parseYear(d.data.year);
+                        var candidateMentions = d[0];
+                        var totalMentions = d[1];
+                        var dif = totalMentions - candidateMentions;
+                        var tooltipWidth = parseInt(tooltip.style("width"), 10);
+                        var formHeight = parseInt(d3.select("#canvas form").style("height"), 10);
+                        console.log(formHeight)
+                        var ul = tooltip 
+                            .style("left", (xScale(year) + margin.left + tooltipWidth/2) + "px")     
+                            .style("top",  (yScale(totalMentions) + formHeight + margin.top - 5) + "px")
+                            .style("opacity", .8);
+                        tooltip.append("h3")
+                            .text(d.key);
+                        tooltip.append("p")
+                            .text("Year: " + d.data.year);
+                        tooltip.append("p")
+                            .text("Number of mentions: " + (dif));
+                    }).on("mouseout", function (d, i) {
+                        d3.select(this)
+                            .attr("fill", function(datum) {
+                                return zScale(d.key);
+                            });
+
+                        tooltip.style("opacity", 0).html("");  
+                    });
+            }
+        </script>
+    </body>
+</html>
