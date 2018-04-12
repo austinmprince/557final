@@ -110,17 +110,24 @@
 
             // sentiment filtering
             var currentFilter = "all";
-
+            var alreadyCreated = false;
             createBarChart();
 
             function createBarChart() {
                 // reset canvas
-                canvas.html("");
+                canvas.selectAll(".axis .tick").html("");
 
                 // add sentiment filter listeners
                 var form = d3.select("body #canvas form");
                 form.selectAll("input[name='sentiment']").on("change", function(){
                     currentFilter = this.value;
+                    alreadyCreated = true;
+                    // reset variables
+                    var colorGroup = canvas.selectAll(".color-group");
+                    var bars = colorGroup.selectAll("rect");
+                    var transition = bars.transition().duration(1000);
+                    transition.attr("height", 0);
+                    transition.attr("y", yScale(0));
                     createBarChart();
                 });
 
@@ -155,7 +162,9 @@
                     createAxes(bandWidth);
 
                     // create legend: a square colored by the candidate color and name label
-                    createLegend(uniqueCandidateNames);
+                    if(!alreadyCreated) {
+                        createLegend(uniqueCandidateNames);
+                    }
 
                     // add hovering listeners
                     addHovering();
@@ -225,9 +234,14 @@
                     .ticks(10);
                 var xPadding = 0;
                 var yPadding = margin.left  - 2;
+
+                var t = d3.transition()
+                    .delay(1000)
+                    .duration(400);
                 canvas.append("g")
                     .attr("class", "axis")
                     .attr("transform", "translate("+bandWidth/2+"," + (height - xPadding) + ")")
+                    .transition(t)
                     .call(xAxis);
 
                 canvas.append("text")
@@ -241,9 +255,10 @@
                 canvas.append("g")
                     .attr("class", "axis")
                     .attr("transform", "translate(" + yPadding + ", 0)")
+                    .transition(t)
                     .call(yAxis);
 
-                canvas.append("text")
+                var yLabel = canvas.append("text")
                     .attr("class", "axis-text")             
                     .attr("transform", "rotate(-90)")
                     .attr("y", yPadding - 30)
@@ -277,10 +292,11 @@
                     .append("g")
                     .attr("fill", function(d) { 
                         return zScale(d.key); 
-                    });
+                    })
+                    .attr("class", "color-group");
                 
                 // add bars
-                colorGroup.selectAll("rect")
+                var bars = colorGroup.selectAll("rect")
                     .data(function(d) {
                         var key = d.key;
                         d.forEach(function (datum) {
@@ -291,20 +307,34 @@
                     .enter()
                     .append("rect")
                     .attr("class", "bar")
-                    .attr("width", bandWidth)
-                    .attr("height", function(d) {
-                        var candidateMentions = d[0];
-                        var totalMentions = d[1];
-                        return yScale(candidateMentions) - yScale(totalMentions); 
-                    })
                     .attr("x", function(d) {
                         var year = parseYear(d.data.year);
-                        return xScale(year); 
+                        return xScale(year) + bandWidth/2; 
                     })
                     .attr("y", function(d) {
+                        var candidateMentions = d[0];
                         var totalMentions = d[1];
-                        return yScale(totalMentions);
+                        var actualHeight = yScale(candidateMentions) - yScale(totalMentions);
+                        return yScale(totalMentions) + actualHeight;
                     });
+                bars.attr("width", 0)
+                    .attr("height", 0);
+
+                var transition = bars.transition().delay(1000).duration(1000);
+                transition.attr("y", function(d) {
+                    var totalMentions = d[1];
+                    return yScale(totalMentions);
+                });
+                transition.attr("x", function(d){
+                    var year = parseYear(d.data.year);
+                    return xScale(year);
+                });
+                transition.attr("width", bandWidth);
+                transition.attr("height", function(d) {
+                    var candidateMentions = d[0];
+                    var totalMentions = d[1];
+                    return yScale(candidateMentions) - yScale(totalMentions); 
+                });
             }
 
             function createLegend(uniqueCandidateNames) {
@@ -350,7 +380,6 @@
                         var dif = totalMentions - candidateMentions;
                         var tooltipWidth = parseInt(tooltip.style("width"), 10);
                         var formHeight = parseInt(d3.select("#canvas form").style("height"), 10);
-                        console.log(formHeight)
                         var ul = tooltip 
                             .style("left", (xScale(year) + margin.left + tooltipWidth/2) + "px")     
                             .style("top",  (yScale(totalMentions) + formHeight + margin.top - 5) + "px")
