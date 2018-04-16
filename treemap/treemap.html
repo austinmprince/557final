@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<style>
+div.tooltip {
+  z-index: 1000;
+  position: absolute;
+  text-align: left;
+  padding: 2px;
+  font: 12px sans-serif;
+  background: white;
+  border: 0px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+div.title {
+  z-index: 999;
+  position: absolute;
+  text-align: left;
+  padding: 2px;
+  font: 12px sans-serif;
+  border: 0px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+rect :hover {
+	fill-opacity: .7;
+}
+
+img {
+  float: left;
+}
+
+
+
+</style>
+<svg width="960" height="600"></svg>
+<br />
+<button value="songs">Total Mentions</button>
+<button value="plays">Total Plays</button>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script>
+
+var sumFunc = sumSongs;
+
+var dataroot;
+
+var svg = d3.select("svg"),
+    width = +svg.attr("width"),
+    height = +svg.attr("height");
+
+var fader = function(color) { return d3.interpolateRgb(color, "#fff")(0.2); },
+    color = d3.scaleOrdinal(d3.schemeCategory20.map(fader)),
+    format = d3.format(",d");
+
+var treemap = d3.treemap()
+    .tile(d3.treemapResquarify)
+    .size([width, height])
+    .round(true)
+    .paddingInner(2);
+
+var div = d3.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+
+d3.tsv("treemap_data.tsv", function(d) {
+  return {
+    candidate : d.candidate,
+    song : d.song,
+    artist : d.artist,
+    sentiment : d.sentiment,
+    line : d.line,
+    plays : d.lastfm_listeners,
+  }
+}, function(error, data){
+  if (error) throw error;
+
+  var root = d3.stratify()
+    .id(function (d) {
+      if (d.song != undefined){
+        return d.song;
+      }
+    else{
+      return d.candidate;
+    } })
+    .parentId(function(d) {
+      if (d.song != undefined){
+        return d.candidate;
+      } else if (d.candidate != "root"){
+        return "root";
+      }
+    })
+    (data);
+
+  root.sum(sumFunc);
+  dataroot = root;
+
+
+  treemap(root);
+
+  var nodes = svg.selectAll('g')
+    .data(root.leaves())
+    .enter()
+    .append('g')
+    .attr('transform', function(d) {return 'translate(' + [d.x0, d.y0] + ')'})
+
+  nodes.append('rect')
+    .attr('width', function(d) { return d.x1 - d.x0; })
+    .attr('height', function(d) { return d.y1 - d.y0; })
+    .attr("fill", function(d) { return color(d.parent.data.candidate); })
+    .attr("class", "song")
+    .on("mouseover", function(d){
+      coordinates = d3.mouse(this);
+      var mouseX = coordinates[0];
+      var mouseY = coordinates[1];
+      div.transition()
+        .duration(200)
+        .style("opacity", .9);
+      div.html("<h3>" + d.data.song + ", " + d.data.artist +"</h3> <br /> Sentiment: "
+       + d.data.sentiment + "<br /> Plays: " + d.data.plays )
+        .style("left", (mouseX + d.x0 + 20) + "px")
+        .style("top", (mouseY + d.y0 - 28) + "px");
+
+      })
+    .on("mouseout", function(f){
+      div.transition()
+        .duration(500)
+        .style("opacity", 0);
+      svg.selectAll("line")
+      .style("stroke","");
+    });
+
+  nodes.append('text')
+    .text(function(d) {
+      if (d.id == d.parent.children[0].id){
+        var lastChild = d.parent.children[d.parent.children.length-1];
+        var xC = (d.x0 + lastChild.x1)/2;
+        var yC = (d.y0 + lastChild.y1)/2;
+        var div = d3.select("body").append("div")
+            .attr("class", "title")
+            .attr("id", "div" + d.parent.id)
+            .style("left", xC - 10 + "px")
+            .style("top", yC - 20 + "px")
+            .html("<h1>" + d.parent.id + "</h1>");
+      }
+    })
+
+    d3.selectAll("button")
+      .on("click", function(){
+        if (this.value == "songs"){
+          changed(sumSongs);
+        }else if (this.value == "plays") {
+          changed(sumPlays);
+        }
+      });
+
+  //Function prewritten from https://bl.ocks.org/mbostock/4063582
+  function changed(sum) {
+    treemap(root.sum(sum));
+    sumFunc = sum;
+
+    nodes.transition()
+        .duration(750)
+        .attr("transform", function(d) { return "translate(" + d.x0 + "," + d.y0 + ")"; })
+      .select("rect")
+        .attr("width", function(d) { return d.x1 - d.x0; })
+        .attr("height", function(d) {
+          if (d.id == d.parent.children[0].id){
+            var lastChild = d.parent.children[d.parent.children.length-1];
+            var xC = (d.x0 + lastChild.x1)/2;
+            var yC = (d.y0 + lastChild.y1)/2;
+            var div = d3.select("#div" + d.parent.id)
+                .transition()
+                .duration(750)
+                .style("left", xC - 10 + "px")
+                .style("top", yC - 20 + "px");
+          }
+          return d.y1 - d.y0;
+        });
+  }
+
+});
+
+function sumSongs(d){
+  return d.plays/d.plays;
+}
+
+function sumPlays(d){
+  return d.plays;
+}
+
+
+
+</script>
