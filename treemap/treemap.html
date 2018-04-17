@@ -136,9 +136,12 @@ d3.tsv("treemap_data.tsv", function(d) {
         var lastChild = d.parent.children[d.parent.children.length-1];
         var xC = (d.x0 + lastChild.x1)/2;
         var yC = (d.y0 + lastChild.y1)/2;
+        if (isNaN(yC)){
+          yC = (d.y0 + lastChild.y0)/2;
+        }
         var div = d3.select("body").append("div")
             .attr("class", "title")
-            .attr("id", "div" + d.parent.id)
+            .attr("id", "div" + d.parent.id.replace(/\s/g,''))
             .style("left", xC - 10 + "px")
             .style("top", yC - 20 + "px")
             .html("<h1>" + d.parent.id + "</h1>");
@@ -169,11 +172,20 @@ d3.tsv("treemap_data.tsv", function(d) {
             var lastChild = d.parent.children[d.parent.children.length-1];
             var xC = (d.x0 + lastChild.x1)/2;
             var yC = (d.y0 + lastChild.y1)/2;
-            var div = d3.select("#div" + d.parent.id)
+            var text = "";
+            if (isNaN(yC)){
+              yC = (d.y0 + lastChild.y0)/2;
+            }
+            if (d.x0 - lastChild.x1 < 0){
+              text = "<h1>" + d.parent.id + "</h1>";
+            }
+            var div = d3.select("#div" + d.parent.id.replace(/\s/g,''))
+                .html(text)
                 .transition()
                 .duration(750)
                 .style("left", xC - 10 + "px")
                 .style("top", yC - 20 + "px");
+
           }
           return d.y1 - d.y0;
         });
