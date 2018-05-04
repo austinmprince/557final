@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sankey Graph</title>
+  <script src="https://d3js.org/d3.v4.js"></script>
+  <link rel="stylesheet" type="text/css" href="sankey.css"/>
+  <script src="sankey.js"></script>
+</head>
+<body>
+<div id="chart"></div>
+<script>
+var units = "Widgets";
+
+// set the dimensions and margins of the graph
+var margin = {top: 10, right: 10, bottom: 10, left: 10},
+  width = 700 - margin.left - margin.right,
+  height = 300 - margin.top - margin.bottom;
+
+// format variables
+var formatNumber = d3.format(",.0f"),    // zero decimal places
+  format = function(d) { return formatNumber(d) + " " + units; },
+  color = d3.scaleOrdinal(d3.schemeCategory20);
+
+// append the svg object to the body of the page
+var svg = d3.select("#chart").append("svg")
+  .attr("width", width + margin.left + margin.right)
+  .attr("height", height + margin.top + margin.bottom)
+.append("g")
+  .attr("transform",
+        "translate(" + margin.left + "," + margin.top + ")");
+
+// Set the sankey diagram properties
+var sankey = d3.sankey()
+  .nodeWidth(36)
+  .nodePadding(40)
+  .size([width, height]);
+
+var path = sankey.link();
+</script>
+
+</body>
+
+</html>
